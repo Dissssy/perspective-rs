@@ -1,5 +1,5 @@
 mod types;
-pub use types::Request;
+pub use types::*;
 
 // throw a compilation error if both features are enabled
 #[cfg(all(feature = "async", feature = "sync"))]
