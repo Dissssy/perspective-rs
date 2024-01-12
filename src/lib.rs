@@ -60,3 +60,39 @@ impl ClientConfigBuilder {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_client_config_builder() {
+        let config = ClientConfigBuilder::default()
+            .api_key("api_key".into())
+            .request_buffer_size(16)
+            .response_buffer_size(16)
+            .maximum_queue_size(128)
+            .tick_rate(1100)
+            .build()
+            .unwrap();
+
+        assert_eq!(config.api_key, "api_key");
+        assert_eq!(config.request_buffer_size, 16);
+        assert_eq!(config.response_buffer_size, 16);
+        assert_eq!(config.maximum_queue_size, 128);
+        assert_eq!(config.tick_rate, 1100);
+    }
+
+    #[test]
+    fn test_client_config_builder_validate() {
+        let config = ClientConfigBuilder::default()
+            .api_key("api_key".into())
+            .request_buffer_size(0)
+            .response_buffer_size(0)
+            .maximum_queue_size(0)
+            .tick_rate(999)
+            .build();
+
+        assert!(config.is_err());
+    }
+}

@@ -6,7 +6,7 @@ use crate::ClientConfig;
 pub struct Client {
     thread: tokio::task::JoinHandle<()>,
     sender: tokio::sync::mpsc::Sender<crate::types::Request>,
-    receiver: tokio::sync::mpsc::Receiver<crate::types::Response>,
+    receiver: Option<tokio::sync::mpsc::Receiver<crate::types::Response>>,
     killer: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
@@ -21,15 +21,22 @@ impl Client {
         Self {
             thread,
             sender: req_sender,
-            receiver: res_receiver,
+            receiver: Some(res_receiver),
             killer: Some(killer_sender),
         }
     }
-    pub async fn send(&mut self, req: crate::types::Request) -> Result<(), tokio::sync::mpsc::error::SendError<crate::types::Request>> {
+    pub async fn send(&self, req: crate::types::Request) -> Result<(), tokio::sync::mpsc::error::SendError<crate::types::Request>> {
         self.sender.send(req).await
     }
     pub async fn recv(&mut self) -> Option<crate::types::Response> {
-        self.receiver.recv().await
+        match self.receiver.as_mut() {
+            Some(r) => r.recv().await,
+            None => Some(Err(crate::types::ApiError::ReceiverTaken)),
+        }
+    }
+    /// if you want to use the receiver in a stream, you can take it
+    pub fn take_receiver(&mut self) -> Option<tokio::sync::mpsc::Receiver<crate::types::Response>> {
+        self.receiver.take()
     }
 }
 
@@ -58,7 +65,6 @@ async fn thread(
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                log::info!("tick");
                 // we only want to run a single request every tick
                 if let Some(req) = queue.next().await {
                     log::info!("sending request");
@@ -68,7 +74,7 @@ async fn thread(
                 }
             }
             Some(req) = req_receiver.recv() => {
-                log::info!("sending request");
+                log::info!("received request");
                 if queue.len() < config.maximum_queue_size {
                     queue.push_back(get_response(
                         req,
@@ -101,5 +107,9 @@ async fn get_response(req: crate::types::Request, client: &reqwest::Client, api_
 
     let res = client.post(&url).json(&req).send().await?;
 
-    res.json::<crate::types::RawApiResponse>().await?.extract()
+    let body = res.text().await?;
+
+    let res = serde_json::from_str::<crate::types::RawApiResponse>(&body).map_err(|e| crate::types::ApiError::Json(e, body))?;
+
+    res.extract()
 }

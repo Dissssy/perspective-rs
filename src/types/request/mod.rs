@@ -1,15 +1,19 @@
 mod attribute;
+use crate::AttributeCompatibility;
+
+use super::Attribute;
 pub use attribute::*;
 use std::collections::HashMap;
 
 /// The request object for the `analyze` method.
 #[derive(serde::Serialize, derive_builder::Builder, Clone, Debug)]
+#[builder(build_fn(validate = "Self::validate"))]
 pub struct Request {
     /// The comment data to analyze.
     #[builder(setter(into))]
     pub(crate) comment: Comment,
     /// The context of the comment.
-    #[builder(setter(into, strip_option))]
+    #[builder(setter(into, strip_option), default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) context: Option<Context>,
     /// The requested attributes.
@@ -21,7 +25,7 @@ pub struct Request {
     #[serde(rename = "spanAnnotations", skip_serializing_if = "Option::is_none")]
     pub(crate) span_annotations: Option<bool>,
     /// A list of ISO 631-1 two-letter language codes specifying the language(s) that comment is in (for example, "en", "es", "fr", "de", etc). If unspecified, the API will auto-detect the comment language. If language detection fails, the API returns an error. Note: See currently supported languages on the ‘Attributes and Languages’ page. There is no simple way to use the API across languages with production support and languages with experimental support only.
-    #[builder(setter(into), default)]
+    #[builder(setter(into, strip_option), default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) languages: Option<Vec<LanguageCode>>,
     /// Whether the API is permitted to store comment and context from this request. Stored comments will be used for future research and community attribute building purposes to improve the API over time. Defaults to false (request data may be stored). Warning: This should be set to true if data being submitted is private (i.e. not publicly accessible), or if the data submitted contains content written by someone under 13 years old (or the relevant age determined by applicable law in your jurisdiction).
@@ -42,6 +46,43 @@ pub struct Request {
     pub(crate) community_id: Option<String>,
 }
 
+impl RequestBuilder {
+    fn validate(&self) -> Result<(), String> {
+        if let Some(attr) = self.requested_attributes.as_ref() {
+            if attr.is_empty() {
+                return Err("requested attributes cannot be empty".into());
+            }
+            if let Some(Some(langs)) = self.languages.as_ref() {
+                if attr.keys().any(|a| langs.iter().any(|l| a.check_compatibility(l) == AttributeCompatibility::Incompatible)) {
+                    return Err("requested attributes are incompatible with the selected language(s)".into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Add an attribute to the request.
+    pub fn add_attribute(&mut self, attribute: Attribute, options: AttributeOptions) -> &mut Self {
+        match self.requested_attributes {
+            Some(ref mut map) => {
+                map.insert(attribute, options);
+            }
+            None => {
+                let mut map = HashMap::new();
+                map.insert(attribute, options);
+                self.requested_attributes = Some(map);
+            }
+        }
+
+        self
+    }
+
+    pub fn all_attributes(&mut self) -> &mut Self {
+        self.requested_attributes = Some(Attribute::all().into_iter().map(|a| (a, AttributeOptions::default())).collect());
+        self
+    }
+}
+
 /// The comment data to analyze.
 #[derive(serde::Serialize, derive_builder::Builder, Clone, Debug)]
 #[builder(build_fn(validate = "Self::validate"))]
@@ -53,6 +94,15 @@ pub struct Comment {
     #[serde(rename = "type")]
     #[builder(setter(into, strip_option), default)]
     pub(crate) type_: Option<TextType>,
+}
+
+impl<T> From<T> for Comment
+where
+    T: ToString,
+{
+    fn from(s: T) -> Self {
+        Self { text: s.to_string(), type_: None }
+    }
 }
 
 impl CommentBuilder {
@@ -114,7 +164,7 @@ impl Default for TextType {
 }
 
 /// The language codes that the API can accept.
-#[derive(serde::Serialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LanguageCode {
     #[serde(rename = "ar")]
     Arabic,
@@ -152,4 +202,14 @@ pub enum LanguageCode {
     Spanish,
     #[serde(rename = "sv")]
     Swedish,
+    #[serde(deserialize_with = "deserialize_unknown")]
+    Other(String),
+}
+
+fn deserialize_unknown<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = <String as serde::Deserialize>::deserialize(deserializer)?;
+    Ok(s)
 }
