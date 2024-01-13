@@ -25,6 +25,24 @@ impl RawApiResponse {
     }
 }
 
+pub enum RequestWithPriority {
+    High(Request),
+    Normal(Request),
+    Low(Request),
+}
+
+impl std::ops::Deref for RequestWithPriority {
+    type Target = Request;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            RequestWithPriority::High(r) => r,
+            RequestWithPriority::Normal(r) => r,
+            RequestWithPriority::Low(r) => r,
+        }
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
     #[error("receiver has been taken")]
