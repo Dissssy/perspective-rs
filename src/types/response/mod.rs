@@ -51,7 +51,7 @@ pub type Response = Result<ApiResponse, super::ApiError>;
 // clientToken
 // Mirrors the request's clientToken.
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct ApiResponse {
     #[serde(rename = "attributeScores")]
     pub attribute_scores: std::collections::HashMap<super::Attribute, AttributeScores>,
@@ -60,7 +60,7 @@ pub struct ApiResponse {
     pub client_token: Option<String>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct AttributeScores {
     #[serde(rename = "summaryScore")]
     pub summary_score: Score,
@@ -68,14 +68,14 @@ pub struct AttributeScores {
     pub span_scores: Option<Vec<SpanScore>>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct Score {
     pub value: f64,
     #[serde(rename = "type")]
     pub score_type: super::ScoreType,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct SpanScore {
     pub begin: usize,
     pub end: usize,
@@ -92,7 +92,7 @@ pub struct SpanScore {
 //   ]
 // }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Debug, Clone)]
 pub struct EmptyApiResponse {
     pub languages: Vec<super::LanguageCode>,
     #[serde(rename = "clientToken")]
